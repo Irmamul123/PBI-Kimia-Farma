@@ -1,0 +1,166 @@
+-- Create Datamart Design --
+CREATE TABLE Datakf.Analysis_Table AS
+SELECT
+    tr.transaction_id,
+    tr.date,
+    tr.branch_id,
+    kc.branch_name,
+    kc.kota,
+    kc.provinsi,
+    kc.rating AS rating_cabangkf,
+    tr.customer_name,
+    p.product_id,
+    p.product_name,
+    tr.price AS actual_price,
+    tr.discount_percentage,
+    CASE
+        WHEN tr.price <= 50000 THEN 0.1
+        WHEN tr.price > 50000 AND tr.price <= 100000 THEN 0.15
+        WHEN tr.price > 100000 AND tr.price <= 300000 THEN 0.2
+        WHEN tr.price > 300000 AND tr.price <= 500000 THEN 0.25
+        When tr.price > 500000 THEN 0.30
+        ELSE 0.3
+    END AS persentase_gross_laba,
+    -- hitung nett_sales --
+    tr.price * (1 - tr.discount_percentage/100) AS nett_sales,
+    -- hitung nett_profit --
+    (tr.price * (1 - tr.discount_percentage/100) * 
+        CASE
+            WHEN tr.price <= 50000 THEN 0.1
+            WHEN tr.price > 50000 AND tr.price <= 100000 THEN 0.15
+            WHEN tr.price > 100000 AND tr.price <= 300000 THEN 0.2
+            WHEN tr.price > 300000 AND tr.price <= 500000 THEN 0.25
+            WHEN tr.price > 500000 THEN 0.30
+            ELSE 0.3
+        END) AS nett_profit,
+    tr.rating AS rating_transaksi
+FROM
+    Datakf.kf_final_transaction AS tr
+LEFT JOIN
+    Datakf.kf_kantor_cabang AS kc ON tr.branch_id = kc.branch_id
+LEFT JOIN
+    Datakf.kf_product AS p ON tr.product_id = p.product_id
+;
+
+
+-- Create Tabel Pendapatan Pertahun --
+CREATE TABLE Datakf.pendapatan_pertahun AS
+SELECT
+    EXTRACT(YEAR FROM date) AS tahun,
+    SUM(nett_sales) AS pendapatan,
+    SUM(nett_profit) AS profit
+FROM
+    Datakf.Analysis_Table
+GROUP BY
+    tahun
+ORDER BY
+    tahun
+;
+
+-- Create Tabel Top 10 Total Transaksi Provinsi --
+CREATE TABLE Datakf.total_transaksi_provinsi AS
+SELECT 
+    provinsi,
+    COUNT(transaction_id) AS total_transaksi,
+    SUM(nett_sales) AS pendapatan
+FROM 
+    Datakf.Analysis_Table
+GROUP BY 
+    provinsi
+ORDER BY 
+    total_transaksi DESC
+LIMIT 10
+;
+
+-- Create Tabel Top 10 Nett Sales Provinsi --
+CREATE TABLE Datakf.nett_sales_provinsi AS 
+SELECT 
+    provinsi,
+    branch_name,
+    SUM(nett_sales) AS nett_sales_cabang,
+    COUNT(product_id) AS total_produk_terjual
+FROM 
+    Datakf.Analysis_Table
+GROUP BY 
+    provinsi, branch_name
+ORDER BY 
+    nett_sales_cabang DESC
+LIMIT 10
+;
+
+-- Create Tabel 5 Cabang Rating Tertinggi, Rating Transaksi Rendah --
+CREATE TABLE Datakf.rating_cabang_transaksi AS
+SELECT
+    branch_name,
+    kota,
+    AVG(rating_cabangkf) AS avg_rating_cabang, 
+    AVG(rating_transaksi) AS avg_rating_transaksi
+FROM 
+    Datakf.Analysis_Table
+GROUP BY 
+    branch_name, kota
+ORDER BY 
+    avg_rating_cabang DESC, avg_rating_transaksi ASC
+LIMIT 5
+;
+
+-- Create Tabel Total Profit Provinsi --
+CREATE TABLE Datakf.total_profit_provinsi AS
+SELECT
+    provinsi,
+    SUM(nett_profit) AS total_profit,
+    COUNT(product_id) AS total_produk_terjual
+FROM 
+    Datakf.Analysis_Table
+GROUP BY 
+    provinsi
+ORDER BY
+    total_profit DESC, total_produk_terjual DESC
+;
+
+-- Create Tabel Cabang dengan kontribusi tertinggi terhadap total pendapatan---
+CREATE TABLE Datakf.Pendapatan_Cabang AS
+SELECT
+    branch_name,
+    provinsi,
+    SUM (nett_sales) AS total_nett_sales,
+    SUM (nett_sales)/(SELECT SUM(nett_sales))*100 AS persentase_kontribusi
+FROM 
+    Kimia_Farma.Analysis_Table
+GROUP BY 
+    branch_name, provinsi
+ORDER BY 
+    total_nett_sales DESC
+LIMIT 5
+;
+
+-- Create Tabel Produk Total Penjualan Tertinggi --
+CREATE TABLE Datakf.Produk_Penjualan_Tertinggi AS
+SELECT
+    product_name,
+    SUM(nett_sales) AS total_nett_sales
+FROM 
+    Datakf.Analysis_Table
+GROUP BY
+    product_name
+ORDER BY
+    total_nett_sales DESC
+LIMIT 10
+;
+
+
+-- Create Tabel Jumlah Transaksi Customer --
+CREATE TABLE Datakf.jumlah_transaksi_customer AS
+SELECT
+    customer_name,
+    COUNT(transaction_id) AS total_transaksi
+FROM 
+    Kimia_Farma.Analysis_Transaction AS st
+WHERE 
+    EXTRACT(YEAR FROM date) BETWEEN 2020 AND 2023
+GROUP BY 
+    customer_name
+ORDER BY 
+    total_transaksi DESC
+LIMIT 5
+;
